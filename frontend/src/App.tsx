@@ -21,6 +21,7 @@ import { type SceneId, DEFAULT_SCENE_ID, getSceneById } from './config/scenes.co
 import { DevicePanel } from './components/ui/DevicePanel';
 import { UAVControlPanel } from './components/ui/UAVControlPanel';
 import { useManualControl } from './hooks/useManualControl';
+import { useDeviceStore } from './store/useDeviceStore';
 
 // ── 環境變數 ────────────────────────────────────────────────────────
 
@@ -124,6 +125,16 @@ export function App() {
   const [uavPosition, setUavPosition] = useState<[number, number, number]>([0, 10, 0]);
   const [uavPath, setUavPath] = useState<Array<{ x: number; y: number; z: number }>>([]);
 
+  // ── 同步 UAV 位置 → DeviceStore rx（讓 ISS/SINR 模擬使用即時座標）────
+  const updateDevice = useDeviceStore(s => s.updateDevice);
+  useEffect(() => {
+    updateDevice('dev-rx-0', { x: uavPosition[0], y: uavPosition[1], z: uavPosition[2] });
+  }, [uavPosition, updateDevice]); 
+
+  // ── 所有裝置的軌跡（每台一架無人機）────────────────────────────────
+  const allDevicePathsRef = useRef<Map<string, { position: [number, number, number]; path: Array<{ x: number; y: number; z: number }> }>>(new Map());
+  const [otherUavs, setOtherUavs] = useState<Array<{ id: string; position: [number, number, number]; path: Array<{ x: number; y: number; z: number }> }>>([]);
+
   useEffect(() => {
     const trackId = isMobile ? myDeviceId : selectedDeviceId;
     if (!trackId) return;
@@ -148,14 +159,59 @@ export function App() {
     });
   }, [allDevices, localGPS, selectedDeviceId, myDeviceId, isMobile]);
 
+  // ── 追蹤所有裝置位置、建立各自軌跡 ─────────────────────────────────
+  useEffect(() => {
+    const pmap = allDevicePathsRef.current;
+    // 移除已斷線的裝置
+    pmap.forEach((_, id) => { if (!allDevices.has(id)) pmap.delete(id); });
+
+    allDevices.forEach((gps, deviceId) => {
+      const [ex, ez, ealt] = latLonToENU(gps.lat, gps.lon, gps.alt, ORIGIN);
+      const x = ex * SCALE;
+      const z = ez * SCALE;
+      const y = Math.max(ealt * ALT_GAIN, 10);
+      const newPos: [number, number, number] = [x, y, z];
+      const existing = pmap.get(deviceId);
+      let path: Array<{ x: number; y: number; z: number }>;
+      if (existing) {
+        const last = existing.path[existing.path.length - 1];
+        path = (last && Math.abs(last.x - x) < 0.1 && Math.abs(last.z - z) < 0.1)
+          ? existing.path
+          : [...existing.path, { x, y, z }];
+      } else {
+        path = [{ x, y, z }];
+      }
+      pmap.set(deviceId, { position: newPos, path });
+    });
+
+    // 除了 selectedDevice 以外，全部作為「其他無人機」
+    const others: Array<{ id: string; position: [number, number, number]; path: Array<{ x: number; y: number; z: number }> }> = [];
+    pmap.forEach((data, id) => {
+      if (isMobile || id !== selectedDeviceId) {
+        others.push({ id, position: data.position, path: data.path });
+      }
+    });
+    setOtherUavs(others);
+  }, [allDevices, selectedDeviceId, isMobile]);
+
   // ── 清除軌跡 ─────────────────────────────────────────────────────
   useEffect(() => {
-    if (clearPathTrigger > 0) setUavPath([]);
+    if (clearPathTrigger > 0) {
+      setUavPath([]);
+      allDevicePathsRef.current.forEach((data, id) => {
+        allDevicePathsRef.current.set(id, { position: data.position, path: [] });
+      });
+      setOtherUavs(prev => prev.map(u => ({ ...u, path: [] })));
+    }
   }, [clearPathTrigger]);
 
   // 切換場景時重置 UAV 路徑（ENU 原點改變，舊路徑座標無效）
   useEffect(() => {
     setUavPath([]);
+    allDevicePathsRef.current.forEach((data, id) => {
+      allDevicePathsRef.current.set(id, { position: data.position, path: [] });
+    });
+    setOtherUavs(prev => prev.map(u => ({ ...u, path: [] })));
   }, [sceneId]);
 
   const handleClearPath = useCallback(() => {
@@ -215,6 +271,7 @@ export function App() {
         manualDirection={manualDirection}
         onManualMoveDone={handleManualMoveDone}
         uavAnimation={uavAnimation}
+        otherUavs={otherUavs}
         onPositionUpdate={(pos) => {
           setUavPosition(pos);
           setUavPath(prev => {
@@ -227,21 +284,19 @@ export function App() {
 
       {/* Device Configuration 面板 (加入 sim-world-lite 的裝置設定) */}
       {!isMobile && (
-        <DevicePanel />
+        <DevicePanel onApplyRxPosition={(pos) => setUavPosition(pos)} />
       )}
 
       {/* UAV Control 面板 (手動控制/自動移動) */}
       {!isMobile && (
-        <div style={{ position: 'absolute', bottom: 14, left: 14, zIndex: 100 }}>
-          <UAVControlPanel
-            auto={auto}
-            uavAnimation={uavAnimation}
-            uavPosition={uavPosition}
-            onToggleAuto={handleToggleAuto}
-            onToggleAnimation={() => setUavAnimation(prev => !prev)}
-            onManualControl={handleManualControl}
-          />
-        </div>
+        <UAVControlPanel
+          auto={auto}
+          uavAnimation={uavAnimation}
+          uavPosition={uavPosition}
+          onToggleAuto={handleToggleAuto}
+          onToggleAnimation={() => setUavAnimation(prev => !prev)}
+          onManualControl={handleManualControl}
+        />
       )}
 
       {/* GPS 狀態 HUD */}

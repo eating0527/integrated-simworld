@@ -14,6 +14,12 @@ $EnvFile     = Join-Path $ScriptDir ".env"
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" +
             [System.Environment]::GetEnvironmentVariable("Path","User")
 
+# Sionna / drjit needs LLVM — set path to LLVM-C.dll
+$LlvmDll = "C:\Program Files\LLVM\bin\LLVM-C.dll"
+if (-not $env:DRJIT_LIBLLVM_PATH -and (Test-Path $LlvmDll)) {
+    $env:DRJIT_LIBLLVM_PATH = $LlvmDll
+}
+
 function Info  { param($msg) Write-Host "[INFO]  $msg" -ForegroundColor Green }
 function Warn  { param($msg) Write-Host "[WARN]  $msg" -ForegroundColor Yellow }
 function Err   { param($msg) Write-Host "[ERROR] $msg" -ForegroundColor Red }
@@ -42,13 +48,25 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 $jobs = @()
 
+# Write frontend WebSocket URL into .env.local so Vite picks it up at startup
+$frontendEnvLocal = Join-Path $FrontendDir ".env.local"
+if ($NoTunnel) {
+    # Local dev: leave WS URL empty → Vite proxy routes /ws → localhost:8000
+    Set-Content $frontendEnvLocal "VITE_WS_URL="
+} else {
+    # Tunnel mode: connect directly to backend cloudflare subdomain
+    Set-Content $frontendEnvLocal "VITE_WS_URL=wss://backend.simworld.website"
+}
+
 # --- Backend ---
 Info "Starting backend (port 8000)..."
 $backendLog = Join-Path $LogDir "backend.log"
 $pythonExe = Join-Path $BackendDir ".venv\Scripts\python.exe"
-$backendCmd = "`"$pythonExe`" -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+# Pass DRJIT_LIBLLVM_PATH explicitly so sionna can find LLVM-C.dll
+$drjitEnv = if ($env:DRJIT_LIBLLVM_PATH) { "set `"DRJIT_LIBLLVM_PATH=$env:DRJIT_LIBLLVM_PATH`" && " } else { "" }
+$backendCmd = "`"$pythonExe`" -m uvicorn app.main:app --host 0.0.0.0 --port 8888 --reload"
 $backendJob = Start-Process -FilePath "cmd.exe" `
-    -ArgumentList "/c","cd /d `"$BackendDir`" && $backendCmd" `
+    -ArgumentList "/c","${drjitEnv}cd /d `"$BackendDir`" && $backendCmd" `
     -RedirectStandardOutput $backendLog `
     -RedirectStandardError  ($backendLog + ".err") `
     -NoNewWindow -PassThru
@@ -76,6 +94,23 @@ if (-not $NoTunnel) {
         Info "Starting Cloudflare Tunnel..."
         $token = [System.Environment]::GetEnvironmentVariable("CLOUDFLARED_TOKEN","Process")
         $tunnelLog = Join-Path $LogDir "tunnel.log"
+
+        # Generate a Windows-compatible config with correct credential path and ports
+        $credFile = Join-Path $env:USERPROFILE ".cloudflared\c85697e6-ff3d-426e-b689-1de63c3f3338.json"
+        $winConfigPath = Join-Path $LogDir "cloudflared-win.yml"
+        @"
+tunnel: c85697e6-ff3d-426e-b689-1de63c3f3338
+credentials-file: $credFile
+protocol: http2
+
+ingress:
+  - hostname: backend.simworld.website
+    service: http://localhost:8888
+  - hostname: frontend.simworld.website
+    service: http://localhost:5173
+  - service: http_status:404
+"@ | Set-Content $winConfigPath -Encoding UTF8
+
         if ($token) {
             $tunnelJob = Start-Process -FilePath $cfBin.Source `
                 -ArgumentList "tunnel","run","--token",$token `
@@ -84,7 +119,7 @@ if (-not $NoTunnel) {
                 -NoNewWindow -PassThru
         } else {
             $tunnelJob = Start-Process -FilePath $cfBin.Source `
-                -ArgumentList "tunnel","run","simworld2" `
+                -ArgumentList "tunnel","--config",$winConfigPath,"run" `
                 -RedirectStandardOutput $tunnelLog `
                 -RedirectStandardError  ($tunnelLog + ".err") `
                 -NoNewWindow -PassThru

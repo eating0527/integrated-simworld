@@ -21,8 +21,10 @@ interface Return {
 }
 
 export function useWebSocket(options: Options = {}): Return {
+  const wsBase = import.meta.env.VITE_WS_URL
+    || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
   const {
-    url = `${import.meta.env.VITE_WS_URL ?? 'wss://backend.simworld.website/ws/gps'}`,
+    url = `${wsBase}/ws/gps`,
     reconnectInterval = 3000,
     maxReconnectAttempts = 10,
     onMessage,

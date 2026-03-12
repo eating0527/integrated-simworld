@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Background -->
+  <circle cx="32" cy="32" r="32" fill="#0a0e1a"/>
+  <!-- UAV body -->
+  <rect x="26" y="30" width="12" height="5" rx="2" fill="#00d4ff"/>
+  <!-- UAV arms -->
+  <line x1="16" y1="27" x2="26" y2="32" stroke="#00d4ff" stroke-width="2"/>
+  <line x1="48" y1="27" x2="38" y2="32" stroke="#00d4ff" stroke-width="2"/>
+  <line x1="16" y1="38" x2="26" y2="33" stroke="#00d4ff" stroke-width="2"/>
+  <line x1="48" y1="38" x2="38" y2="33" stroke="#00d4ff" stroke-width="2"/>
+  <!-- Rotors -->
+  <ellipse cx="16" cy="27" rx="7" ry="2" fill="none" stroke="#00ffaa" stroke-width="1.5"/>
+  <ellipse cx="48" cy="27" rx="7" ry="2" fill="none" stroke="#00ffaa" stroke-width="1.5"/>
+  <ellipse cx="16" cy="38" rx="7" ry="2" fill="none" stroke="#00ffaa" stroke-width="1.5"/>
+  <ellipse cx="48" cy="38" rx="7" ry="2" fill="none" stroke="#00ffaa" stroke-width="1.5"/>
+  <!-- Signal waves -->
+  <path d="M28 26 Q32 22 36 26" fill="none" stroke="#00d4ff" stroke-width="1.5" opacity="0.7"/>
+  <path d="M25 23 Q32 17 39 23" fill="none" stroke="#00d4ff" stroke-width="1.5" opacity="0.4"/>
+</svg>

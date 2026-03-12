@@ -9,6 +9,7 @@ import { ACESFilmicToneMapping } from 'three';
 import { NTPUScene } from './NTPUScene';
 import { NYCUScene } from './NYCUScene';
 import { UAVPath } from './UAVPath';
+import { UAV } from './UAV';
 import { Starfield } from '../ui/Starfield';
 import { type SceneId, getSceneById, DEFAULT_SCENE_ID } from '@/config/scenes.config';
 import { useDeviceStore } from '@/store/useDeviceStore';
@@ -41,6 +42,7 @@ interface MainSceneProps {
   onManualMoveDone?: () => void;
   uavAnimation?: boolean;
   onPositionUpdate?: (pos: [number, number, number]) => void;
+  otherUavs?: Array<{ id: string; position: [number, number, number]; path: Array<{ x: number; y: number; z: number }> }>;
 }
 
 export function MainScene({
@@ -52,6 +54,7 @@ export function MainScene({
   onManualMoveDone,
   uavAnimation = false,
   onPositionUpdate,
+  otherUavs = [],
 }: MainSceneProps) {
   const sceneDef = getSceneById(sceneId);
   const cfg = sceneDef.config;
@@ -129,6 +132,18 @@ export function MainScene({
         </Suspense>
 
         <UAVPath path={uavPath} color="#00ff00" lineWidth={3} />
+
+        {/* 其他連線裝置——每台一架無人機 + 軌跡 */}
+        {otherUavs.map((uav, i) => {
+          const COLORS = ['#ff6600', '#00aaff', '#ff00cc', '#ffff00', '#ff4444', '#44ffff'];
+          const color = COLORS[i % COLORS.length];
+          return (
+            <Suspense key={uav.id} fallback={null}>
+              <UAV position={uav.position} scale={10} />
+              <UAVPath path={uav.path} color={color} lineWidth={2} />
+            </Suspense>
+          );
+        })}
 
         {jammerDevices.map((d) => (
           <Suspense key={d.id} fallback={null}>

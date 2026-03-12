@@ -3,6 +3,17 @@ import os
 import json
 import time
 import uuid
+
+# Auto-set DRJIT_LIBLLVM_PATH before any drjit/mitsuba/sionna import
+if os.name == "nt" and not os.environ.get("DRJIT_LIBLLVM_PATH"):
+    for _dll in [
+        r"C:\Program Files\LLVM\bin\LLVM-C.dll",
+        r"C:\Program Files (x86)\LLVM\bin\LLVM-C.dll",
+    ]:
+        if os.path.isfile(_dll):
+            os.environ["DRJIT_LIBLLVM_PATH"] = _dll
+            break
+
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Optional
@@ -312,11 +323,15 @@ async def delete_photo(filename: str):
 @app.get("/api/sionna/status")
 async def sionna_status():
     """Check if Sionna is installed and usable."""
+    import traceback
+    llvm_path = os.environ.get("DRJIT_LIBLLVM_PATH", "NOT SET")
     try:
         import sionna  # noqa: F401
-        return {"available": True, "version": getattr(sionna, "__version__", "unknown")}
-    except ImportError:
-        return {"available": False, "version": None}
+        from app.sionna_service import _load_sionna
+        _load_sionna()
+        return {"available": True, "version": getattr(sionna, "__version__", "unknown"), "llvm_path": llvm_path}
+    except ImportError as e:
+        return {"available": False, "version": None, "llvm_path": llvm_path, "error": str(e), "trace": traceback.format_exc()}
 
 
 @app.get("/api/sionna/sinr-map")
@@ -338,11 +353,9 @@ async def sionna_sinr_map(
         if not os.path.isfile(SINR_MAP_PATH):
             return JSONResponse({"error": "圖檔生成失敗，請查看後端 log"}, status_code=500)
         return FileResponse(SINR_MAP_PATH, media_type="image/png", filename="sinr_map.png")
-    except ImportError:
+    except ImportError as e:
+        logger.error(f"Sionna ImportError (sinr-map): {e}")
         return JSONResponse({"error": "Sionna 未安裝，請先執行 pip install sionna"}, status_code=503)
-    except Exception as e:
-        logger.error(f"SINR map error: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.get("/api/sionna/cfr-plot")
@@ -394,9 +407,8 @@ async def sionna_channel_response():
 from pydantic import BaseModel, Field
 from typing import List
 import asyncio
-import io
 from fastapi import HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 
 class DeviceIn(BaseModel):
     name: str
@@ -447,9 +459,8 @@ async def simulate(req: SimulateRequest):
 
     try:
         loop = asyncio.get_event_loop()
-        from app.sionna_service_lite import generate_maps
 
-        out_path: str = await loop.run_in_executor(
+        image_bytes: bytes = await loop.run_in_executor(
             None,
             _run_generate_maps,
             str(scene_xml),
@@ -464,11 +475,8 @@ async def simulate(req: SimulateRequest):
         logger.exception("Simulation failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    with open(out_path, "rb") as f:
-        image_bytes = f.read()
-
-    return StreamingResponse(
-        io.BytesIO(image_bytes),
+    return Response(
+        content=image_bytes,
         media_type="image/png",
         headers={"Content-Disposition": f'inline; filename="{req.map_type}_map.png"'},
     )
@@ -481,7 +489,7 @@ def _run_generate_maps(
     map_type: str,
     cell_size: float,
     samples_per_tx: int,
-) -> str:
+) -> bytes:
     from app.sionna_service_lite import generate_maps
     return generate_maps(
         scene_xml_path=scene_xml,

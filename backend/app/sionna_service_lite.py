@@ -200,16 +200,11 @@ def generate_maps(
     logger.info("Added RX '%s' at Sionna %s", rx["name"], rx_pos_sionna)
 
     # -----------------------------------------------------------------------
-    # Determine map center (at RX horizontal position, given altitude)
-    # -----------------------------------------------------------------------
-    map_center = [rx_pos_sionna[0], rx_pos_sionna[1], altitude]
-
-    # -----------------------------------------------------------------------
-    # Run RadioMapSolver
+    # Run RadioMapSolver  (no center/size → auto-use scene bounding box)
     # -----------------------------------------------------------------------
     logger.info(
-        "Running RadioMapSolver: cell_size=%s, map_size=%s, samples=%s",
-        cell_size, map_size, samples_per_tx,
+        "Running RadioMapSolver: cell_size=%s, samples=%s",
+        cell_size, samples_per_tx,
     )
     rm_solver = RadioMapSolver()
     rm = rm_solver(
@@ -217,9 +212,6 @@ def generate_maps(
         max_depth=5,
         samples_per_tx=samples_per_tx,
         cell_size=(cell_size, cell_size),
-        center=map_center,
-        size=list(map_size),
-        orientation=[0, 0, 0],
         refraction=False,
         specular_reflection=True,
         diffuse_reflection=True,
@@ -252,13 +244,11 @@ def generate_maps(
     tss_dbm = to_dbm(TSS)
 
     # Cell centres for axis labels
-    cc = rm.cell_centers.numpy()   # shape (H, W, 2) or (2, H, W) — check Sionna version
-    if cc.ndim == 3 and cc.shape[2] == 2:
-        x_coords = cc[0, :, 0]
-        y_coords = cc[:, 0, 1]
-    else:
-        x_coords = cc[0, :, 0]
-        y_coords = cc[:, 0, 1]
+    # Sionna 1.x: cell_centers shape is (num_cells_y, num_cells_x, 2)
+    cc = rm.cell_centers.numpy()
+    # Flatten to get unique sorted axis values
+    x_coords = np.unique(cc[:, :, 0])
+    y_coords = np.unique(cc[:, :, 1])
 
     # -----------------------------------------------------------------------
     # CFAR peak detection (on smoothed ISS)
@@ -295,11 +285,17 @@ def generate_maps(
     # -----------------------------------------------------------------------
     # Plot
     # -----------------------------------------------------------------------
-    fig, ax = plt.subplots(figsize=(8, 7))
+    # Compute aspect ratio from actual data extent to avoid matplotlib
+    # cropping to half the figure when map is not square
+    x_range = abs(x_coords[-1] - x_coords[0]) or 1
+    y_range = abs(y_coords[-1] - y_coords[0]) or 1
+    fig_w = 9
+    fig_h = max(6, fig_w * y_range / x_range)
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
     im = ax.imshow(
         data,
         origin="lower",
-        aspect="equal",
+        aspect="auto",
         cmap=cmap,
         extent=[x_coords[0], x_coords[-1], y_coords[0], y_coords[-1]],
     )
@@ -337,15 +333,23 @@ def generate_maps(
     ax.legend(by_label.values(), by_label.keys(), loc="upper right", fontsize=8)
 
     # -----------------------------------------------------------------------
-    # Save
+    # Save to memory buffer (avoid disk I/O race conditions)
     # -----------------------------------------------------------------------
+    import io as _io
+    buf = _io.BytesIO()
+    fig.savefig(buf, format="png", dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    image_bytes = buf.read()
+    buf.close()
+
+    # Also write to disk for caching / debugging
     filename_map = {"iss": "iss_map.png", "tss": "tss_map.png", "cfar": "cfar_map.png"}
     out_path = os.path.join(output_dir, filename_map[map_type])
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=120, bbox_inches="tight")
-    plt.close(fig)
-    logger.info("Saved %s map to %s", map_type.upper(), out_path)
-    return out_path
+    with open(out_path, "wb") as f:
+        f.write(image_bytes)
+    logger.info("Saved %s map to %s (%d bytes)", map_type.upper(), out_path, len(image_bytes))
+    return image_bytes
 
 
 # ---------------------------------------------------------------------------

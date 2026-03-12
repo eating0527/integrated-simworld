@@ -9,9 +9,10 @@ interface DeviceRowProps {
   onUpdate: (patch: Partial<Omit<Device, 'id' | 'role'>>) => void;
   onRemove?: () => void;
   showPower: boolean;
+  onApplyPosition?: () => void;
 }
 
-function DeviceRow({ device, onUpdate, onRemove, showPower }: DeviceRowProps) {
+function DeviceRow({ device, onUpdate, onRemove, showPower, onApplyPosition }: DeviceRowProps) {
   return (
     <div className="dp-device-row">
       {/* Name */}
@@ -57,6 +58,15 @@ function DeviceRow({ device, onUpdate, onRemove, showPower }: DeviceRowProps) {
           <span className="dp-unit">dBm</span>
         </div>
       )}
+
+      {/* Apply position (RX only) */}
+      {onApplyPosition && (
+        <div className="dp-field-row">
+          <button className="dp-btn-apply" onClick={onApplyPosition}>
+            套用位置
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -69,9 +79,10 @@ interface SectionProps {
   devices: Device[];
   canAdd?: boolean;
   showPower?: boolean;
+  onApplyPosition?: (device: Device) => void;
 }
 
-function Section({ title, role, devices, canAdd = false, showPower = false }: SectionProps) {
+function Section({ title, role, devices, canAdd = false, showPower = false, onApplyPosition }: SectionProps) {
   const { addDevice, removeDevice, updateDevice } = useDeviceStore();
 
   return (
@@ -91,6 +102,7 @@ function Section({ title, role, devices, canAdd = false, showPower = false }: Se
           showPower={showPower}
           onUpdate={(patch) => updateDevice(d.id, patch)}
           onRemove={canAdd ? () => removeDevice(d.id) : undefined}
+          onApplyPosition={onApplyPosition ? () => onApplyPosition(d) : undefined}
         />
       ))}
     </div>
@@ -99,7 +111,11 @@ function Section({ title, role, devices, canAdd = false, showPower = false }: Se
 
 // ─── Main panel ──────────────────────────────────────────────────────────────
 
-export function DevicePanel() {
+interface DevicePanelProps {
+  onApplyRxPosition?: (pos: [number, number, number]) => void;
+}
+
+export function DevicePanel({ onApplyRxPosition }: DevicePanelProps = {}) {
   const devices = useDeviceStore((s) => s.devices);
 
   const txDevices     = devices.filter((d) => d.role === 'tx');
@@ -123,6 +139,7 @@ export function DevicePanel() {
         devices={rxDevices}
         canAdd={false}
         showPower={false}
+        onApplyPosition={onApplyRxPosition ? (d) => onApplyRxPosition([d.x, d.y, d.z]) : undefined}
       />
       <Section
         title="Jammer（干擾源）"

@@ -75,6 +75,18 @@ def _setup_gpu():
 
 def _load_sionna():
     """延遲載入 sionna，確保執行時才報錯（import 階段不崩潰）"""
+    import os
+    # Auto-discover LLVM-C.dll on Windows if env var not set
+    if not os.environ.get("DRJIT_LIBLLVM_PATH"):
+        _candidates = [
+            r"C:\Program Files\LLVM\bin\LLVM-C.dll",
+            r"C:\Program Files (x86)\LLVM\bin\LLVM-C.dll",
+        ]
+        for _c in _candidates:
+            if os.path.isfile(_c):
+                os.environ["DRJIT_LIBLLVM_PATH"] = _c
+                logger.info(f"Auto-set DRJIT_LIBLLVM_PATH={_c}")
+                break
     try:
         # 必須在 sionna.rt import 之前設定 variant。
         # sionna/rt/__init__.py 的邏輯：if mi.variant() is None → try cuda first。

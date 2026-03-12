@@ -66,7 +66,14 @@ export function SimulationPanel({ sceneId = 'NTPU' }: { sceneId?: string }) {
             map_type: key,
             cell_size: sinrParams.cell_size,
             samples_per_tx: sinrParams.samples_per_tx,
-            devices: devices
+            devices: devices.map(d => ({
+              name: d.name,
+              role: d.role,
+              x: d.x,
+              y: d.y,
+              z: d.z,
+              power_dbm: d.powerDbm ?? null,
+            })),
           }),
         });
       } else {

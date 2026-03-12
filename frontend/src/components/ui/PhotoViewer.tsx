@@ -194,7 +194,7 @@ export function PhotoViewer({ photos, onDelete }: Props) {
           </div>
           {/* 元資料 */}
           <div style={{ textAlign: 'center' }}>
-            <div style={{ color: 'var(--text-primary)', fontSize: 13, marginBottom: 4 }}>
+            <div style={{ color: '#e8eaf6', fontSize: 13, marginBottom: 4 }}>
               {parseTimestamp(selected.timestamp).toLocaleString()}
             </div>
             {selected.latitude != null && (

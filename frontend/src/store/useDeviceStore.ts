@@ -52,7 +52,7 @@ export const useDeviceStore = create<DeviceStore>((set) => ({
   addDevice: (role) => {
     set((state) => {
       const count = countByRole(state.devices, role);
-      const prefix = role === 'tx' ? 'tx' : 'jam';
+      const prefix = role === 'tx' ? 'tx' : role === 'rx' ? 'rx' : 'jam';
       const newDevice: Device = {
         id: genId(),
         name: `${prefix}-${count}`,

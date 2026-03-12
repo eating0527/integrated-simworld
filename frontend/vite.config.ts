@@ -16,17 +16,17 @@ export default defineConfig({
     proxy: {
       // REST API
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8888',
         changeOrigin: true,
       },
       // 靜態上傳照片
       '/uploads': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8888',
         changeOrigin: true,
       },
       // WebSocket
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: 'ws://localhost:8888',
         ws: true,
         changeOrigin: true,
       },
