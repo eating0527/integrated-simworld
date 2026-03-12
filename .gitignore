@@ -42,3 +42,9 @@ Thumbs.db
 # Log
 *.log
 /tmp/
+
+# Runtime-generated logs and temp files
+.logs/
+
+# Generated simulation map images
+backend/app/static/maps/
