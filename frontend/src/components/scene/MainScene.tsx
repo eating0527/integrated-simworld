@@ -8,6 +8,7 @@ import {
 import { ACESFilmicToneMapping } from 'three';
 import { NTPUScene } from './NTPUScene';
 import { NYCUScene } from './NYCUScene';
+import { DynamicScene } from './DynamicScene';
 import { UAVPath } from './UAVPath';
 import { UAV } from './UAV';
 import { Starfield } from '../ui/Starfield';
@@ -43,6 +44,7 @@ interface MainSceneProps {
   uavAnimation?: boolean;
   onPositionUpdate?: (pos: [number, number, number]) => void;
   otherUavs?: Array<{ id: string; position: [number, number, number]; path: Array<{ x: number; y: number; z: number }> }>;
+  generatedSceneModelPath?: string; // Path to dynamically generated GLB model
 }
 
 export function MainScene({
@@ -55,6 +57,7 @@ export function MainScene({
   uavAnimation = false,
   onPositionUpdate,
   otherUavs = [],
+  generatedSceneModelPath,
 }: MainSceneProps) {
   const sceneDef = getSceneById(sceneId);
   const cfg = sceneDef.config;
@@ -115,8 +118,14 @@ export function MainScene({
           shadow-radius={8}
         />
 
-        <Suspense fallback={<Loader label={sceneDef.labelEn} />}>
-          {sceneId === 'nycu' ? <NYCUScene /> : <NTPUScene />}
+        <Suspense fallback={<Loader label={generatedSceneModelPath ? 'Generated' : sceneDef.labelEn} />}>
+          {generatedSceneModelPath ? (
+            <DynamicScene modelPath={generatedSceneModelPath} />
+          ) : sceneId === 'nycu' ? (
+            <NYCUScene />
+          ) : (
+            <NTPUScene />
+          )}
         </Suspense>
 
         <Suspense fallback={null}>

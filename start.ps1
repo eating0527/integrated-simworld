@@ -24,6 +24,30 @@ function Info  { param($msg) Write-Host "[INFO]  $msg" -ForegroundColor Green }
 function Warn  { param($msg) Write-Host "[WARN]  $msg" -ForegroundColor Yellow }
 function Err   { param($msg) Write-Host "[ERROR] $msg" -ForegroundColor Red }
 
+function Stop-PortListeners {
+    param(
+        [int[]]$Ports
+    )
+    $listeners = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+        Where-Object { $Ports -contains $_.LocalPort }
+    $pids = $listeners | Select-Object -ExpandProperty OwningProcess -Unique
+    if (-not $pids) {
+        return
+    }
+
+    Warn "Found stale listeners on ports $($Ports -join ', '): $($pids -join ', '), stopping..."
+    foreach ($procId in $pids) {
+        try {
+            Stop-Process -Id $procId -Force -ErrorAction Stop
+            Info "   Stopped PID: $procId"
+        }
+        catch {
+            Warn "   Failed to stop PID: $procId"
+        }
+    }
+    Start-Sleep -Seconds 1
+}
+
 # Load .env
 if (Test-Path $EnvFile) {
     Get-Content $EnvFile | ForEach-Object {
@@ -48,10 +72,13 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 $jobs = @()
 
+# Ensure required ports are free before startup.
+Stop-PortListeners -Ports @(5173, 8888)
+
 # Write frontend WebSocket URL into .env.local so Vite picks it up at startup
 $frontendEnvLocal = Join-Path $FrontendDir ".env.local"
 if ($NoTunnel) {
-    # Local dev: leave WS URL empty → Vite proxy routes /ws → localhost:8000
+    # Local dev: leave WS URL empty so frontend can use local WS/API settings.
     Set-Content $frontendEnvLocal "VITE_WS_URL="
 } else {
     # Tunnel mode: connect directly to backend cloudflare subdomain
@@ -59,7 +86,7 @@ if ($NoTunnel) {
 }
 
 # --- Backend ---
-Info "Starting backend (port 8000)..."
+Info "Starting backend (port 8888)..."
 $backendLog = Join-Path $LogDir "backend.log"
 $pythonExe = Join-Path $BackendDir ".venv\Scripts\python.exe"
 # Pass DRJIT_LIBLLVM_PATH explicitly so sionna can find LLVM-C.dll
@@ -134,7 +161,9 @@ ingress:
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  Frontend : http://localhost:5173"
-Write-Host "  Public   : https://frontend.simworld.website"
+if (-not $NoTunnel) {
+    Write-Host "  Public   : https://frontend.simworld.website"
+}
 Write-Host "  Press Ctrl+C to stop all services"
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""

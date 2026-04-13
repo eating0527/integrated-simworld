@@ -7,6 +7,7 @@
  *  3. 將 GPS 轉成 ENU 三維座標，驅動 UAV 位置與軌跡
  *  4. 管理照片列表（初始載入 + WebSocket 即時更新）
  *  5. 渲染 3D 場景、GPS HUD、拍照按鈕、照片歷史
+ *  6. 支援動態場景加載（使用者點選地圖生成）
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { MainScene } from './components/scene/MainScene';
@@ -14,6 +15,7 @@ import { CameraUpload } from './components/ui/CameraUpload';
 import { PhotoViewer } from './components/ui/PhotoViewer';
 import { GPSStatus } from './components/ui/GPSStatus';
 import { useGPSSync } from './hooks/useGPSSync';
+import { useGeneratedScene } from './hooks/useGeneratedScene';
 import { latLonToENU } from './utils/geo';
 import { SimulationPanel } from './components/ui/SimulationPanel';
 import { SceneSwitcher } from './components/ui/SceneSwitcher';
@@ -53,6 +55,42 @@ interface Photo {
 // ── App ─────────────────────────────────────────────────────────────
 export function App() {
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const [fromMap] = useState(() => {
+    const search = new URLSearchParams(window.location.search);
+    return search.get('fromMap') === '1';
+  });
+
+  // ── 入口策略：預設先進地圖頁，只有從 my_map.html 回來才進 React ─────────
+  const needsMapSelection = !fromMap;
+
+  useEffect(() => {
+    if (!needsMapSelection) return;
+    window.location.replace(`${window.location.origin}/my_map.html`);
+  }, [needsMapSelection]);
+
+  // 自動重定向期間顯示提示
+  if (needsMapSelection) {
+    return (
+      <div style={{
+        width: '100vw',
+        height: '100dvh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
+        color: 'white',
+        fontSize: '18px',
+        flexDirection: 'column',
+        gap: '20px',
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <h1 style={{ marginBottom: '10px' }}>🗺️ 場景生成系統</h1>
+          <p>正在前往地圖選點頁面...</p>
+          <p style={{ fontSize: '14px', opacity: 0.7 }}>選完後會自動建立 blosm 任務並回到 React</p>
+        </div>
+      </div>
+    );
+  }
 
   // ── UAV Control Panel 狀態 ───────────────────────────────────────
   const [auto, setAuto] = useState(false);
@@ -67,6 +105,10 @@ export function App() {
   const handleManualMoveDone = useCallback(() => {
     resetManualControl();
   }, [resetManualControl]);
+
+  // ── 生成場景管理（地圖點選生成）─────────────────────────────────
+  const generatedScene = useGeneratedScene();
+  const [usePickedScene, setUsePickedScene] = useState(false);
 
   // ── 場景管理 ────────────────────────────────────────────────
   const [sceneId, setSceneId] = useState<SceneId>(DEFAULT_SCENE_ID);
@@ -214,6 +256,12 @@ export function App() {
     setOtherUavs(prev => prev.map(u => ({ ...u, path: [] })));
   }, [sceneId]);
 
+  useEffect(() => {
+    if (!generatedScene.modelPath) {
+      setUsePickedScene(false);
+    }
+  }, [generatedScene.modelPath]);
+
   const handleClearPath = useCallback(() => {
     sendClearPath();
     setUavPath([]);
@@ -272,6 +320,7 @@ export function App() {
         onManualMoveDone={handleManualMoveDone}
         uavAnimation={uavAnimation}
         otherUavs={otherUavs}
+        generatedSceneModelPath={usePickedScene ? (generatedScene.modelPath ?? undefined) : undefined}
         onPositionUpdate={(pos) => {
           setUavPosition(pos);
           setUavPath(prev => {
@@ -329,7 +378,21 @@ export function App() {
 
       {/* 場景切換器 */}
       {!isMobile && (
-        <SceneSwitcher currentScene={sceneId} onChange={setSceneId} />
+        <SceneSwitcher
+          currentScene={sceneId}
+          onChange={(id) => {
+            setUsePickedScene(false);
+            setSceneId(id);
+          }}
+          hasPickedScene={Boolean(generatedScene.modelPath)}
+          pickedActive={usePickedScene}
+          pickedLabel={generatedScene.pickedPlaceName}
+          onSelectPicked={() => {
+            if (generatedScene.modelPath) {
+              setUsePickedScene(true);
+            }
+          }}
+        />
       )}
     </div>
   );

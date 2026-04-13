@@ -24,6 +24,11 @@ export default defineConfig({
         target: 'http://localhost:8888',
         changeOrigin: true,
       },
+      // 動態生成場景（GLB）
+      '/generated-scenes': {
+        target: 'http://localhost:8888',
+        changeOrigin: true,
+      },
       // WebSocket
       '/ws': {
         target: 'ws://localhost:8888',

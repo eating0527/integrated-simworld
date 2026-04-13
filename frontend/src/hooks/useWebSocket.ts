@@ -21,8 +21,11 @@ interface Return {
 }
 
 export function useWebSocket(options: Options = {}): Return {
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   const wsBase = import.meta.env.VITE_WS_URL
-    || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
+    || (isLocalhost
+      ? 'ws://127.0.0.1:8888'
+      : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`);
   const {
     url = `${wsBase}/ws/gps`,
     reconnectInterval = 3000,
